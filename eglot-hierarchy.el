@@ -146,6 +146,26 @@ With prefix 2 show both which is default."
   (select-window (get-mru-window (selected-frame) nil :not-selected))
   (find-file file))
 
+(defun eglot--uri-to-path2 (uri current-server)
+  "Convert URI to file path, helped by `eglot--current-server'."
+  (when (keywordp uri) (setq uri (substring (symbol-name uri) 1)))
+  (let* ((server current-server)
+         (remote-prefix (and server (eglot--trampish-p server)))
+         (url (url-generic-parse-url uri)))
+    ;; Only parse file:// URIs, leave other URI untouched as
+    ;; `file-name-handler-alist' should know how to handle them
+    ;; (bug#58790).
+    (if (string= "file" (url-type url))
+        (let* ((retval (url-unhex-string (url-filename url)))
+               ;; Remove the leading "/" for local MS Windows-style paths.
+               (normalized (if (and (not remote-prefix)
+                                    (eq system-type 'windows-nt)
+                                    (cl-plusp (length retval)))
+                               (w32-long-file-name (substring retval 1))
+                             retval)))
+          (concat remote-prefix normalized))
+      uri)))
+
 ;;;###autoload
 (defun eglot-hierarchy-call-hierarchy (outgoing)
   "Show the incoming call hierarchy for the symbol at point.
@@ -197,7 +217,7 @@ With a prefix argument, show the outgoing call hierarchy."
 	     ;; avoid this window not selected and returned
 	     (let ((w (get-buffer-window (marker-buffer btn))))
 	       (when w (select-window w)))
-	     (eglot-hierarchy--open-file-in-mru (eglot--uri-to-path uri))
+	     (eglot-hierarchy--open-file-in-mru (eglot--uri-to-path2 uri eglot-current-server))
 	     (let* ((fromRanges (plist-get node :fromRanges))
 		    (range (if (and eglot-hierarchy-call-site
 				    (vectorp fromRanges)
